@@ -1,0 +1,199 @@
+libname abd 'R:\GraduateStudents\AdesobaTaiwoP\sasclass\Week9- Macros';
+libname Pharm 'R:\PHSC5343 data\LifeLink+\Retail Pharmacy';
+libname enr 'R:\PHSC5343 data\LifeLink+\Enrollment';
+libname inpat 'R:\PHSC5343 data\LifeLink+\Inpatient';
+
+/*----2.	Use a macro and a proc append statement to identify all the prescription claims from
+2010-2018 for the following drugs
+Create a structure for the dataset---------*/
+
+data smryr10;
+set pharmacy.clm_rx_rtl_10_12
+(keep= ndc paid charge dayssup quan pat_id gpi14 gpi_desc from_dt obs=1);
+	drugcode='delete               ';
+	source='                              ';
+	yeardate=year(from_dt);
+	*/Creat a macro to read skeletal muscle relaxant data for 2010 to 2018*/
+	
+	%macro excl(rx_annual);
+	data hmwrk (keep=ndc paid charge dayssup quan pat_id GPI14 gpi_desc source from_dt drugcode yeardate);
+	set &rx_annual;
+	drugcode= 'other';
+	if substr(gpi14,1,2)='75' then drugcode='SMR';
+	Source="&rx_annual";	
+	yeardate= year(from_dt);
+data smrdata;
+	set hmwrk; if drugcode='SMR';
+		proc sort; by pat_id;
+data smrsort;
+	set smrdata;
+		proc append base= smryr10 data=smrsort force;
+	%mend excl;
+
+*/Now invoking the macro*/
+	%excl(pharmacy.clm_rx_rtl_10_12)
+	%excl(pharmacy.clm_rx_rtl_13_15)
+	%excl(pharmacy.clm_rx_rtl_16_18)
+
+	data fullsmr;
+		set smryr10;
+			if drugcode='delete ' then delete;
+		proc contents;
+			title 'Skeletal Muscle Relaxant Claims 2010-18';
+	run;
+	*/Number of claims and the average paid amount by year for the SMRs? */
+proc tabulate data= fullsmr;
+class yeardate;
+var paid;
+table yeardate all, mean*paid all;
+run;
+
+/* 3. Persons who were continuously enrolled with
+insurance benefits for 12 months prior to their FIRST SMR prescription*/
+proc contents data=enr.uark087_13p_pop; run;
+
+proc print data=enr.uark087_13p_pop (obs=1); run;
+
+proc sort data=fullsmr out=smr_unique; by pat_id from_dt; run;
+proc sort data=smr_unique nodupkey dupout= smr_excess; by pat_id; run; 
+proc sql;
+create table smr_rxenrol as
+select*
+from smr_unique inner join enr.uark087_13p_pop 
+on smr_unique.pat_id= uark087_13p_pop.pat_id;
+quit;
+
+/* Persons were continuously enrolled with insurance benefits for 12 months prior 
+to their FIRST SMR prescription*/
+ /*12 months before and after the first SMR prediction*/
+data smrtrack;
+set smr_rxenrol;
+month_before= intnx('month', from_dt, -12, 's');
+month_after= intnx('month', from_dt, 13, 's');
+run;
+
+data smrtrack; set smrtrack;
+format month_after yymmdd10.;
+format month_before yymmdd10.;
+ref_date='01Jan2001'd;
+format ref_date yymmdd10.;
+monthcount_pre= intck('month', ref_date, month_before);
+monthcount_post= monthcount_pre+13;
+if substr(estring,monthcount_pre,12)= 'XXXXXXXXXXXX' then full_before= 1;
+else full_before=0;
+if substr(estring,monthcount_post,12)= 'XXXXXXXXXXXX' then full_after= 1;
+else full_after=0;
+enr_bf_aft= full_before + full_after;
+run;
+
+proc means data=smrtrack n;
+var full_before;
+where full_before=1;
+title '3a. persons were continuously enrolled with insurance benefits for 12 months prior 
+to their FIRST SMR prescription';
+run;
+
+/* Persons were continuously enrolled with insurance benefits for 12 months after 
+to their FIRST SMR prescription*/
+proc means data=smrtrack n;
+var full_after;
+where full_after=1;
+title '3b. persons were continuously enrolled with insurance benefits for 12 months after 
+their FIRST SMR prescription';
+run;
+
+data enr_after;
+set smrtrack;
+if full_after=1;
+run;
+proc means data=enr_after n; var full_after;
+title 'ALTERNATIVE: 3b. persons were continuously enrolled with insurance benefits for 
+12 months after their FIRST SMR prescription';
+run;
+/*--- 3c. The average number of SMR prescriptions in the 12 months 
+following their index (first) SMR for those continuously enrolled 
+and those not continuously enrolled for 12 months following 
+the index prescription-
+Step 1: Create a dataset for those continuously enrolled for 12 months prior to their first
+prescription and another dataset for those not continuously enrolled;
+data cont_enr_before*/
+set smrtrack;
+if full_before=1;
+run;
+data Nocont_enr_before;
+set smrtrack;
+if full_before=0;
+run;
+data merged_enr_before;
+set cont_enr_before Nocont_enr_before;
+run;
+proc sql;
+create table presc_count as
+select*
+from merged_enr_before left join smr_excess 
+on merged_enr_before.pat_id= smr_excess.pat_id;
+quit;
+
+proc sql;
+select count (pat_id) as howmany from presc_count;
+title '3ci. Total ID count';
+quit;
+proc sql;
+select count (distinct(pat_id)) as howmany2 from presc_count;
+title '3cii. Unique ID Counts';
+quit;
+
+
+
+/* 4.	Use a macro and a proc append statement, merge the inpatient 
+medical claims 10-18 for those people with an SMR that were continuously enrolled
+for 12 months before AND 12 months after their index SMR Rx.  */
+/*--Create dataset for those enrolled before and after-*/
+data smr_before_after;
+set smrtrack;
+if enr_bf_aft=2;
+run;
+
+proc options option= macro;
+run;
+/* Creating a macro with the name 'yearin'*/;
+
+	%macro yearin(sasset); /*sasset is a macro parameter that will take on different values in macro*/
+	data bringin;
+	set &sasset;
+	run;
+	proc append base= ratin4 data=bringin force;
+	%mend yearin;
+
+*/the %yearin is invoking the macro three times where the parameter (sasset) takes on the value*/
+	%yearin(inpat.clm_inpat_10_12)
+	%yearin(inpat.clm_inpat_13_15)
+	%yearin(inpat.clm_inpat_16_18)
+data ratin4 (rename= from_dt=old_dt);
+set ratin4;
+run;
+proc sql;
+	create table inpat_enr_data as
+	select* from smr_before_after inner join ratin4 on 
+	smr_before_after.pat_id=ratin4.pat_id; quit;
+
+/*--a.	How many inpatient admissions were there in the pre index 
+	period on average for recipients prescribed an SMR?  */
+	
+data inpat_prior;
+set inpat_enr_data;
+if old_dt ge month_before or old_dt le from_dt;
+count=1;
+unic_id= cats(pat_id,conf_num);
+run;
+	proc means data=inpat_prior n;
+	var count;
+	title '4a. Number of inpatient admissions that were in the pre index 
+	period on average for recipients prescribed an SMR';
+	run;
+	proc sql;
+	select count(distinct(unic_id)) as uniq_inpat from inpat_prior;
+	title 'unique inpatient count among those SMR';
+	run;
+
+
