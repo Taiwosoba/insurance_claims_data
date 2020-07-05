@@ -1,0 +1,29 @@
+*Read outpatient claims data stored in a newly created library- health;
+
+libname learn 'R:\GraduateStudents\AdesobaTaiwoP\sasclass';
+libname health 'R:\PHSC5343 data\LifeLink+\Outpatient';
+
+data learn.class1;
+set health.clm_outpat_13_15;
+run;
+proc options;
+run;
+
+/*Description of data set*/
+proc contents data = class1;
+title 'Contents of outpatient claims data';
+run;
+
+/*A new data set is created with select variables. It is a subset of the class1 data*/
+data step5;
+set class1;
+keep Diag1 Pat_id Charge Copay POS from_dt to_dt;
+run;
+proc print data = step5 (obs=50);
+title 'Print out of the first 50 observations';
+run;
+
+/*The following states provide the contents of the newly created data set i.e. "step5" data*/
+proc contents data = step5;
+title 'Claims data using select variables';
+run;
