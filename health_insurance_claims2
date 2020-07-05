@@ -1,0 +1,145 @@
+
+/*-----Create library for the homework-------*/
+libname enr 'R:\GraduateStudents\AdesobaTaiwoP\sasclass\Homework4';
+/*-----------Create library for the data source------*/
+libname frm 'R:\PHSC5343 data\LifeLink+\Enrollment';
+/*-----Create library for look-up---------------*/
+libname vcr 'R:\PharMetrics (IQVIA)\Lookup Tables';
+/*----Create a library for inpatient data------*/
+libname abx 'R:\PHSC5343 data\LifeLink+\Inpatient';
+
+/*---Create age categories*/
+data enr.hmwrk4;
+length _agecat $20.;
+set frm.uark087_13p_pop;
+newyer= (2018-der_yob);
+_agecat='aged';
+if newyer < 10 then _agecat= 'kids';
+if newyer >=10 and newyer<=17 then _agecat='teenagers';
+if newyer >=18 and newyer<=35 then _agecat='young_adults';
+if newyer >=36 and newyer<=64 then _agecat='older_adults';
+if newyer >=65 and newyer<=80 then _agecat='very_old';
+run;
+
+/*----3a. mean and SD for age by region----*/
+proc tabulate data=enr.hmwrk4;
+class pat_region;
+var newyer;
+table pat_region all, newyer*(n*format=7.0 mean*format=4.2 std*format=6.2) all;
+title ' 3a. mean and SD for age by region';
+run;
+
+*----3b. persons in each region by age cateogories--*/
+proc tabulate data=enr.hmwrk4;
+class pat_region _agecat;
+table pat_region all, _agecat*(n*format=7.0 pctn*format=5.2) all;
+title '3b. persons in each region by age cateogories';
+run;
+
+/*----3c. Average and total number of claim lines for each person--*/
+proc tabulate data=enr.hmwrk4;
+class pat_region;
+var nbr_clm_lines;
+table pat_region all, nbr_clm_lines*(n*format=7.0 mean*format=5.2) all;
+title '3c. Average and total number of claim lines for each person';
+run;
+
+/*----4a. A new data set with with unique 8 digit GPI codes ----*/
+data enr.pharm;
+set vcr.pp_rx_lookup
+(keep= generic_name product_name thptc_clas_id gpi14 thptc_clas_desc gpi_desc gpi2_desc);
+manucp= substr (gpi14,1,8);
+run;
+
+/*---How many unique 8 digit GPI14 codes there are in table ---*/
+proc sql;  
+select count(distinct(manucp)) as gpi_unique from enr.pharm;
+title '4a. Number of unique 8 digit GPI14 codes';
+quit; run;
+
+/*---4b. sort the GPI codes----*/
+proc sort data=enr.pharm out=enr.pharmsrt nodupkey;
+by manucp;
+run;
+/*-----4b. (contd.) print the first 50 unique GPI14 codes*/
+proc print data=enr.pharmsrt (obs=50);
+title '4b. Print the first 50 unique GPI14 codes';
+run;
+
+/*---4C. Sort by generic name---*/
+proc sort data=enr.pharmsrt out=enr.gensrt nodupkey;
+by Generic_name;
+run;
+
+/*---4C. Print first 50 by generic name---*/
+proc print data=enr.gensrt (obs=50);
+title '4C. Print the first 50 generic names';
+run;
+/*----5. create a new data set---------*/
+data enr.inpat;
+set abx.clm_inpat_10_12 abx.clm_inpat_13_15 abx.clm_inpat_16_18;
+run;
+
+/*-----select ED patients alone----*/
+data enr.inpat_ED;
+set enr.inpat;
+if pos='23';
+run;
+
+/*----5a Number of recipients with inpatient hospitalizations and Emergency Department hospitalizations*/
+proc sql; 
+create table Frksisk as
+select count(distinct(pat_id)) as uniq_pat from enr.inpat;
+select count(distinct(pat_id)) as uniq_pat12 from enr.inpat_ED;
+title' 5a. Number of recipients with inpatient hospitalizations and Emergency Department hospitalizations';
+quit; run;
+proc sql; 
+select count(distinct(pat_id)) as uniq_pat from enr.inpat;
+select count(distinct(pat_id)) as uniq_pat12 from enr.inpat_ED;
+title' 5a. Number of recipients with inpatient hospitalizations and Emergency Department hospitalizations';
+quit; run;
+
+/*----5b. number of unique hospitalization there are using the confinement number and patient_id ---*/
+proc sql; 
+select count(distinct(pat_id)) as numpat from enr.inpat;
+select count(distinct(conf_num)) as fnmnt from enr.inpat;
+title '5b. number of unique hospitalization there are using the confinement number and patient_id';
+quit; run;
+
+/*-- Sort by confinement number---*/
+proc sort data=enr.inpat out=nepact nodupkey;
+by conf_num;
+run;
+
+/*-- Sort the unique confinement number by patient id---*/
+proc sort data=nepact out=nepact_1 nodupkey;
+by pat_id;
+run;
+proc sql; 
+select count(distinct(pat_id)) as fnmnt from nepact_1;
+quit; run;
+
+/*----number of unique hospitalization there are using the confinement number and patient_id ----*/
+proc sql;
+create table hhc17comp as
+select*, sum(paid) as comp17
+from enr.inpat group by pat_id,conf_num ;
+title'5b. number of unique hospitalization there are using the confinement number and patient_id ';
+quit;
+proc sql;
+create table shatry as
+select sum(distinct(paid)) as comp17
+from enr.inpat group by pat_id,conf_num;
+title '5c. average and standard deviation of the total paid amount per hospitalization';
+quit;
+proc means data=shatry mean std n;
+var comp17;
+run;
+
+
+
+
+
+
+
+
