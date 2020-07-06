@@ -1,0 +1,112 @@
+libname hwk 'R:\GraduateStudents\AdesobaTaiwoP\sasclass\Week10-SQL';
+libname claim 'R:\PHSC5343 data\LifeLink+\Inpatient';
+libname Enrol 'R:\PHSC5343 data\LifeLink+\Enrollment';
+libname outpat 'R:\PHSC5343 data\LifeLink+\Outpatient';
+libname pharmacy 'R:\PHSC5343 data\LifeLink+\Retail Pharmacy';
+options fmtsearch= (MSFormat Work Library);
+run;
+ods rtf file= 'R:\GraduateStudents\AdesobaTaiwoP\sasclass\Week10-SQL\hmwrk7.rtf' style=journal;
+
+data hwk.enroldata;
+set enrol.uark087_13p_pop;
+run;
+
+
+/* 2a.How many persons were eligible for each state of the country?-------
+step1: create a variable for unique patient count by state*/
+proc sql;
+create table hwk.stateelig as
+select pat_id, pat_state, count(distinct(pat_id)) as Statecount
+from hwk.enroldata
+group by pat_state;
+quit;
+
+/*----create a table that shows state count without duplicates---*/
+proc sql;
+Create table hwk.Uniqstate as
+select unique(pat_state), Statecount
+from hwk.stateelig;
+quit;
+proc print data=hwk.Uniqstate;
+title'2a. Number of eligible persons in each state';
+run;
+
+/*-------2b. How many paid claims (nbr_clm_lines) were there for each state of the country---------*/
+proc sql;
+create table hwk.stateclm as
+select pat_id, pat_state, sum(nbr_clm_lines) as stateclms
+from hwk.enroldata
+group by pat_state;
+quit;
+
+/*----create a table that shows state claims without duplicates---*/
+proc sql;
+Create table hwk.Uniqstateclms as
+select unique(pat_state), Stateclms
+from hwk.stateclm;
+quit;
+proc print data=hwk.Uniqstateclms;
+title'2b. Number of paid claims were there for each state of the country';
+run;
+
+/*---2c. How many persons had their FIRST date of true enrollment begin in each year
+(eg: 2010, 1999, …., 2018)---
+First count the number of persons the years of first enrolment*/
+proc sql;
+create table hwk.frstclm as
+select pat_id, pat_state, der_yob, year(enr_frst) as enrclmsyr, count(distinct(pat_id)) as firstenr
+from enrol.uark087_13p_pop
+group by enrclmsyr;
+quit;
+
+/*----create a table that shows state claims without duplicates---*/
+proc sql;
+Create table hwk.firstyrdata as
+select unique(enrclmsyr), firstenr
+from hwk.frstclm;
+quit;
+proc print data=hwk.firstyrdata;
+title'2c. the number of persons with first enrolment in each year';
+run;
+
+/*----2d. For persons who had their first year of true enrollment begin in 2012 or 2013, 
+what was the average age of those?---*/
+proc sql;
+create table hwk.frstclm_age as
+select*, 2020-der_yob as age
+from hwk.frstclm
+group by enrclmsyr;
+quit;
+
+data hwk.firstyr12_13;
+set hwk.frstclm_age;
+if enrclmsyr =2012 or enrclmsyr =2013 ; run; 
+ 
+proc means data=hwk.firstyr12_13 mean;
+var age;
+title '2d. Average age of persons who had their first year of true enrollment begin in 2012 or 2013';
+run;
+
+/*---3a. How many persons had their first year of enrollment in 2012-13 AND had at least 
+one inpatient claim in 2013-15?*/
+title 'Question 3a. Number of persons who had first year of enrollment in 2012-13 AND had at least 
+one inpatient claim in 2013-15';
+proc sql;
+select count(distinct(pat_id)) as frstyr_12_13_distinct
+from hwk.inp_enr12_13;
+quit;
+
+/*-------3b. How many inpatient claims were there for persons who had their first year of 
+enrollment in 2012-13?----*/
+title 'Question 3b. Number of npatient claims for persons who had their first year of 
+enrollment in 2012-13';
+proc sql;
+select count(pat_id) as frstyr_12_13_totl
+from hwk.inp_enr12_13;
+quit;
+
+
+
+
+
+
